@@ -1,0 +1,228 @@
+# 🛠️ מדריך שימוש - OpenShift Resource Cleanup
+
+## סקירה כללית
+
+הכלי כולל פונקציונליות למחיקת משאבי OpenShift כשיש כשל בפריסת (deploy) השירות. זה מאוד נפוץ כשהפריסה נכשלת בגלל משאבים קיימים.
+
+## פקודות זמינות
+
+### 1. יצירת Pipeline עם תמיכה ב-OpenShift
+```bash
+pipeops-cli init \
+  --project-url https://gitlab.company.com/team/my-service \
+  --token $GITLAB_TOKEN \
+  --oc-url https://openshift.company.com:8443 \
+  --oc-token $OPENSHIFT_TOKEN
+```
+
+### 2. טיפול בכשל Deploy קיים
+```bash
+pipeops-cli fix-deploy \
+  --project-url https://gitlab.company.com/team/my-service \
+  --token $GITLAB_TOKEN \
+  --pipeline-id 12345 \
+  --oc-url https://openshift.company.com:8443 \
+  --oc-token $OPENSHIFT_TOKEN
+```
+
+### 3. ניקוי ידני של משאבים
+```bash
+# ניקוי בסיסי
+pipeops-cli cleanup \
+  --oc-url https://openshift.company.com:8443 \
+  --oc-token $OPENSHIFT_TOKEN \
+  --service-name my-service
+
+# ניקוי עם אימות
+pipeops-cli cleanup \
+  --oc-url https://openshift.company.com:8443 \
+  --oc-token $OPENSHIFT_TOKEN \
+  --service-name my-service \
+  --route-name my-custom-route \
+  --verify
+```
+
+## איך זה עובד?
+
+### תהליך אוטומטי
+1. **זיהוי כשל** - הכלי מזהה שתהליך ה-deploy נכשל
+2. **התחברות ל-OpenShift** - מתחבר עם הטוקן שסופק
+3. **מחיקת משאבים** - מוחק:
+   - Service
+   - Route
+   - Deployment
+   - Pods (לפי label)
+4. **חזרה על הניסיון** - מפעיל מחדש את ה-deploy job
+
+### משאבים שנמחקים
+- **Service**: `my-service`
+- **Route**: `my-service-route` (או שם מותאם)
+- **Deployment**: `my-service`
+- **Pods**: כל הפודים עם `app=my-service`
+
+## דוגמאות מעשיות
+
+### תרחיש 1: Pipeline חדש עם תמיכה באוטומציה
+```bash
+# יצירת pipeline שיטפל אוטומטית בכשלי deploy
+export GITLAB_TOKEN="glpat-xxxxxxxxxxxxx"
+export OPENSHIFT_TOKEN="sha256~xxxxxxxxxx"
+export OPENSHIFT_URL="https://api.openshift.company.com:6443"
+
+pipeops-cli init \
+  -p https://gitlab.company.com/backend/user-api \
+  -t $GITLAB_TOKEN \
+  --oc-url $OPENSHIFT_URL \
+  --oc-token $OPENSHIFT_TOKEN
+```
+
+### תרחיש 2: טיפול בכשל קיים
+```bash
+# נניח שזיהיתם pipeline שנכשל עם ID 5678
+pipeops-cli fix-deploy \
+  -p https://gitlab.company.com/backend/user-api \
+  -t $GITLAB_TOKEN \
+  --pipeline-id 5678 \
+  --oc-url $OPENSHIFT_URL \
+  --oc-token $OPENSHIFT_TOKEN
+
+# הכלי יבצע:
+# 1. ימצא את ה-deploy job שנכשל
+# 2. ימחק את המשאבים ב-OpenShift
+# 3. יפעיל מחדש את ה-deploy job
+```
+
+### תרחיש 3: ניקוי ידני
+```bash
+# כשאתם צריכים לנקות משאבים באופן ידני
+pipeops-cli cleanup \
+  --oc-url $OPENSHIFT_URL \
+  --oc-token $OPENSHIFT_TOKEN \
+  --service-name user-api \
+  --verify
+
+# תוצאה:
+# ✅ service 'user-api' cleaned up successfully
+# ✅ route 'user-api-route' cleaned up successfully
+# ✅ deployment 'user-api' cleaned up successfully
+# ✅ Pods for app 'user-api' cleaned up
+# ✅ All resources successfully removed
+```
+
+## טיפים לשימוש
+
+### הכנת משתנים
+```bash
+# הגדרת משתנים לשימוש נוח
+export GITLAB_URL="https://gitlab.company.com"
+export GITLAB_TOKEN="glpat-xxxxxxxxxxxxx"
+export OPENSHIFT_URL="https://api.openshift.company.com:6443"
+export OPENSHIFT_TOKEN="sha256~xxxxxxxxxx"
+
+# אליאס נוח
+alias poc='pipeops-cli'
+alias poc-cleanup='pipeops-cli cleanup --oc-url $OPENSHIFT_URL --oc-token $OPENSHIFT_TOKEN'
+```
+
+### שימוש עם סקריפטים
+```bash
+#!/bin/bash
+# fix_failed_deploys.sh
+
+FAILED_PIPELINES=(12345 12346 12347)
+PROJECT_URL="https://gitlab.company.com/team/my-service"
+
+for pipeline_id in "${FAILED_PIPELINES[@]}"; do
+    echo "Fixing pipeline: $pipeline_id"
+
+    pipeops-cli fix-deploy \
+        -p "$PROJECT_URL" \
+        -t "$GITLAB_TOKEN" \
+        --pipeline-id "$pipeline_id" \
+        --oc-url "$OPENSHIFT_URL" \
+        --oc-token "$OPENSHIFT_TOKEN"
+
+    echo "Waiting 30 seconds before next..."
+    sleep 30
+done
+```
+
+## פתרון בעיות נפוצות
+
+### שגיאת חיבור ל-OpenShift
+```
+❌ OpenShift login failed: error: unable to connect
+```
+**פתרון**: בדוק שה-URL נכון והגישה פתוחה
+
+### חסר הרשאות
+```
+❌ OpenShift login failed: error: unauthorized
+```
+**פתרון**: בדוק שהטוקן תקף ויש הרשאות למחיקת משאבים
+
+### משאבים לא נמצאו
+```
+⚠️ Could not delete service 'my-service': not found
+```
+**זה בסדר** - המשאבים כבר לא קיימים
+
+### הכלי `oc` לא מותקן
+```
+❌ OpenShift CLI ('oc') not found
+```
+**פתרון**:
+```bash
+# הורדה והתקנה של oc CLI
+curl -LO https://mirror.openshift.com/pub/openshift-v4/clients/oc/latest/linux/oc.tar.gz
+tar -xzf oc.tar.gz
+sudo mv oc /usr/local/bin/
+```
+
+## בדיקות ואימות
+
+### בדוק שהכל עובד
+```bash
+# בדיקת גישה ל-OpenShift
+oc login $OPENSHIFT_URL --token=$OPENSHIFT_TOKEN
+
+# בדיקת הכלי
+pipeops-cli cleanup --help
+
+# בדיקה יבשה
+pipeops-cli cleanup \
+  --oc-url $OPENSHIFT_URL \
+  --oc-token "dummy-token" \
+  --service-name test-service
+# (זה ייכשל בלוגין, אבל תראה שהפרמטרים נכונים)
+```
+
+### ניטור פעילות
+```bash
+# עקבו אחר לוגי הכלי
+tail -f pipeops.log
+
+# עקבו אחר פעילות ב-GitLab
+# התחברו לממשק ותראו את ה-pipelines
+```
+
+## אבטחה והרשאות
+
+### הרשאות OpenShift נדרשות
+הטוקן צריך יכולת למחוק:
+- Services
+- Routes
+- Deployments
+- Pods
+
+### שמירת טוקנים
+```bash
+# אל תשמרו טוקנים בקוד!
+# השתמשו במשתני סביבה או קבצי secrets
+
+# דוגמה עם קובץ .env
+echo "OPENSHIFT_TOKEN=sha256~xxxxxxxxxx" >> ~/.env
+source ~/.env
+```
+
+זה הכל! עכשיו יש לכם כלי מלא לטיפול בכשלי Deploy ב-OpenShift 🎉

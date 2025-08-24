@@ -1,0 +1,277 @@
+# 🏢 PipeOps CLI - מדריך התקנה לסביבה ארגונית
+
+## סביבה ללא גישה לאינטרנט (Air-Gapped)
+
+### דרישות מערכת
+- Python 3.8+
+- גישה לשרת GitLab פנימי
+- הרשאות לפעולות Git ו-API
+
+### התקנה בסביבה סגורה
+
+#### שלב 1: הכנת החבילות
+```bash
+# במחשב עם גישה לאינטרנט - הכן את החבילות
+pip download click PyYAML requests -d packages/
+
+# העבר את התיקייה packages/ לסביבה הפנימית
+```
+
+#### שלב 2: התקנה בסביבה הפנימית
+```bash
+# התקנה מקבצים מקומיים
+pip install --no-index --find-links packages/ click PyYAML requests
+
+# התקנת הכלי
+cd pipeops-cli
+pip install -e .
+
+# בדיקה
+pipeops-cli --version
+```
+
+### חלופה פשוטה - ללא pip
+```bash
+# הורד את הקבצים הנדרשים ישירות
+# click, PyYAML, requests
+# והעתק אותם לתיקיית Python site-packages
+
+# אלטרנטיבה: הרץ ישירות
+python cli.py --help
+```
+
+## הגדרת הכלי
+
+### מבנה התיקיות
+```
+pipeops-cli/
+├── Config/
+│   └── pipeline_definitions.yml  # קונפיגורציה
+├── Templates/                    # תבניות
+│   ├── Python-service/
+│   ├── Python-package/
+│   └── Node-service/
+├── Core/                        # קבצי הליבה
+├── Utiles/
+│   └── logger.py
+└── cli.py                       # נקודת כניסה
+```
+
+### הגדרת קובץ התצורה
+ערוך את `Config/pipeline_definitions.yml`:
+
+```yaml
+pipelines:
+  python_service:
+    template_path: Templates/Python-service
+    description: "Python service with Docker deployment"
+    required_env:
+      - CI_REGISTRY_URL          # הכתובת של הרישום הפנימי
+      - INTERNAL_TOKEN           # טוקן פנימי
+    files_to_create:
+      - .gitlab-ci.yml
+      - oc_params/dev_values.yaml
+      - oc_params/prod_values.yaml
+    supported_languages:
+      - python
+    supported_types:
+      - service
+
+global:
+  default_branches:
+    source: "main"
+    target: "develop"           # התאם לסטנדרט הארגוני
+    feature_prefix: "feature/pipeline-setup"
+```
+
+### התאמה לסביבה הארגונית
+
+#### כתובות פנימיות
+החלף בתבניות:
+- `registry.gitlab.com` → `docker-registry.company.com`
+- `https://gitlab.com` → `https://gitlab.company.com`
+- `pypi.org` → `nexus.company.com/pypi`
+
+#### אימות וטוקנים
+```bash
+# הגדר משתני סביבה
+export GITLAB_URL=https://gitlab.company.com
+export GITLAB_TOKEN=your-internal-token
+export DOCKER_REGISTRY=docker-registry.company.com
+```
+
+## שימוש יומי
+
+### פקודות בסיסיות
+```bash
+# בדיקת תקינות
+pipeops-cli validate
+
+# רשימת תבניות זמינות
+pipeops-cli list
+
+# יצירת pipeline חדש
+pipeops-cli init \
+  --project-url https://gitlab.company.com/team/project \
+  --token $GITLAB_TOKEN
+
+# בדיקה יבשה לפני פעולה אמיתית
+pipeops-cli init \
+  --project-url https://gitlab.company.com/team/project \
+  --token $GITLAB_TOKEN \
+  --dry-run
+```
+
+### אוטומציה
+```bash
+# עבור הרבה פרויקטים
+cat projects.txt | while read project_url; do
+  pipeops-cli init -p "$project_url" -t "$GITLAB_TOKEN" --auto-confirm
+  sleep 5  # מנוחה בין פרויקטים
+done
+```
+
+## פתרון בעיות נפוצות
+
+### בעיות התקנה
+```bash
+# אם חסרות חבילות
+python -c "import yaml, click, requests; print('OK')"
+
+# אם יש בעיות עם encoding
+export PYTHONIOENCODING=utf-8
+```
+
+### בעיות אישורי SSL
+```bash
+# לסביבות עם תעודות פנימיות
+export PYTHONHTTPSVERIFY=0
+# או
+pip install --trusted-host gitlab.company.com
+```
+
+### בעיות הרשאות GitLab
+ודא שלטוקן יש הרשאות:
+- `api` - גישה מלאה
+- `read_repository`
+- `write_repository`
+
+### בעיות בתבניות
+```bash
+# בדוק שהתבניות קיימות
+find Templates/ -name "*.yml" -o -name "*.yaml"
+
+# בדוק את המבנה
+pipeops-cli validate
+```
+
+## התאמה אישית
+
+### הוספת תבנית חדשה
+1. צור תיקייה חדשה ב-`Templates/`
+2. הוסף קבצי תבנית עם משתנים: `{{project_name}}`, `{{creation_date}}`
+3. עדכן את `pipeline_definitions.yml`
+4. בדוק: `pipeops-cli validate`
+
+### התאמת משתנים
+משתנים זמינים בתבניות:
+- `{{project_name}}` - שם הפרויקט
+- `{{creation_date}}` - תאריך יצירה
+- `{{creation_year}}` - שנת יצירה
+- `{{language}}` - שפת תכנות
+- `{{pipeline_type}}` - סוג pipeline
+
+### הגדרות ברמת הארגון
+צור קובץ תצורה מרכזי:
+```yaml
+# /etc/pipeops/config.yml
+global:
+  company_registry: "docker-registry.company.com"
+  company_gitlab: "https://gitlab.company.com"
+  default_namespace: "devops"
+
+  default_branches:
+    source: "main"
+    target: "develop"
+    feature_prefix: "feature/ci-setup"
+```
+
+## בדיקת איכות ותחזוקה
+
+### בדיקות תקופתיות
+```bash
+# בדוק שהכל עובד
+pipeops-cli validate
+
+# בדוק גישה ל-GitLab
+curl -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+  https://gitlab.company.com/api/v4/user
+
+# בדוק תבניות
+for template in Templates/*/; do
+  echo "Checking $template"
+  find "$template" -name "*.yml" -exec yamllint {} \;
+done
+```
+
+### עדכון התבניות
+```bash
+# גבה תבניות קיימות
+cp -r Templates Templates.backup.$(date +%Y%m%d)
+
+# עדכן תבניות
+# בדוק שינויים
+pipeops-cli validate
+
+# בדיקה יבשה
+pipeops-cli init --dry-run -p test-project -t $token
+```
+
+## אבטחה והרשאות
+
+### הגדרות אבטחה
+- השתמש בטוקנים עם הרשאות מוגבלות
+- החלף טוקנים תקופתי
+- נטר פעילות הכלי בלוגי GitLab
+
+### ניטור ולוגים
+```bash
+# הפעל עם לוגים מפורטים
+pipeops-cli init -p project -t token --config debug.yml
+
+# לוגים לקובץ
+python -c "
+from Utiles.logger import configure_logging
+configure_logging('DEBUG', True, 'pipeops.log')
+"
+```
+
+## תמיכה פנימית
+
+### מסמכי עזרה
+- שמור את המדריך הזה במיקום נגיש לצוות
+- צור דוגמאות ספציפיות לארגון
+- תעדוק תבניות מותאמות אישית
+
+### הדרכת הצוות
+```bash
+# הכנת סקריפט הדגמה
+#!/bin/bash
+echo "PipeOps CLI Demo for DevOps Team"
+echo "=================================="
+
+echo "1. Validating configuration..."
+pipeops-cli validate
+
+echo "2. Listing available templates..."
+pipeops-cli list
+
+echo "3. Dry run example..."
+pipeops-cli init --dry-run \
+  -p https://gitlab.company.com/demo/project \
+  -t demo-token
+
+echo "Demo completed!"
+```
+
+זכרו: הכלי נועד להיות פשוט ויעיל לצוותי DevOps. אם משהו לא ברור - תמיד אפשר לבדוק את הקוד ולהתאים!

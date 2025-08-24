@@ -1,0 +1,69 @@
+pipelines:
+  python_service:
+    template_path: Templates/Python-service
+    description: "Python service with Docker deployment"
+    required_env:
+      - CI_REGISTRY_URL
+      - OPENSHIFT_SERVER
+      - OPENSHIFT_TOKEN
+    files_to_create:
+      - .gitlab-ci.yml
+      - oc-params/dev_values.yaml
+      - oc-params/stg_values.yaml
+      - oc-params/prod_values.yaml
+    supported_languages:
+      - python
+    supported_types:
+      - service
+
+  python_package:
+    template_path: Templates/Python-package
+    description: "Python package for PyPI distribution"
+    required_env:
+      - PYPI_TOKEN
+      - TWINE_USERNAME
+      - TWINE_PASSWORD
+    files_to_create:
+      - .gitlab-ci.yml
+      - pyproject.toml
+    supported_languages:
+      - python
+    supported_types:
+      - package
+
+  nodejs_service:
+    template_path: Templates/Node-service
+    description: "Node.js service with Docker deployment"
+    required_env:
+      - CI_REGISTRY_URL
+      - DOCKER_REGISTRY
+      - NPM_TOKEN
+    files_to_create:
+      - .gitlab-ci.yml
+      - oc-params/dev_values.yaml
+      - oc-params/stg_values.yaml
+      - oc-params/prod_values.yaml
+    supported_languages:
+      - javascript
+      - nodejs
+      - node
+    supported_types:
+      - service
+
+global:
+  default_branches:
+    source: "main"
+    target: "dev"
+    feature_prefix: "feature/pipeops"
+
+  api_settings:
+    timeout: 30
+    max_retries: 3
+    retry_delay: 2
+
+  template_variables:
+    # These variables will be available in all templates
+    - creation_date
+    - project_name
+    - language
+    - pipeline_type

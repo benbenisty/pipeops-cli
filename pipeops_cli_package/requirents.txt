@@ -1,0 +1,9 @@
+# Core dependencies only - suitable for air-gapped environments
+click>=8.0.0
+PyYAML>=5.4.0
+requests>=2.25.0
+
+# Note: These are standard libraries that should be available in most Python installations
+# If any of these are missing, they can be installed from local packages or omitted:
+# - rich (for colored output) - can be removed if not available
+# - tenacity (for retry logic) - can be simplified with basic retry loops
